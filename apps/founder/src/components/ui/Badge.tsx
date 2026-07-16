@@ -17,6 +17,15 @@ const toneStyles: Record<BadgeTone, string> = {
   primary: "bg-primary-50 text-primary-700",
 };
 
+export const toneDotColor: Record<BadgeTone, string> = {
+  neutral: "bg-slate-400",
+  success: "bg-emerald-500",
+  warning: "bg-amber-500",
+  danger: "bg-red-500",
+  info: "bg-blue-500",
+  primary: "bg-primary-600",
+};
+
 export function Badge({
   tone = "neutral",
   dot,
@@ -36,19 +45,7 @@ export function Badge({
         className
       )}
     >
-      {dot && (
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            tone === "success" && "bg-emerald-500",
-            tone === "warning" && "bg-amber-500",
-            tone === "danger" && "bg-red-500",
-            tone === "info" && "bg-blue-500",
-            tone === "primary" && "bg-primary-600",
-            tone === "neutral" && "bg-slate-400"
-          )}
-        />
-      )}
+      {dot && <span className={cn("size-1.5 rounded-full", toneDotColor[tone])} />}
       {children}
     </span>
   );

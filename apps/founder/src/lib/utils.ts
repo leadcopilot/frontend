@@ -24,3 +24,11 @@ export function formatSeconds(seconds: number): string {
   const s = Math.round(seconds % 60);
   return `${m}m ${s}s`;
 }
+
+/** UTC ISO -> "YYYY-MM-DDTHH:mm:ss" in local time, for a `datetime-local` input. */
+export function toLocalDateTimeInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}

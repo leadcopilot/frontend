@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { Badge, toneDotColor, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ApiError, attendanceApi, type AttendanceRecord, type AttendanceStatus } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, toLocalDateTimeInput } from "@/lib/utils";
 
 function formatTime(value: string | null) {
   if (!value) return "—";
@@ -21,18 +21,10 @@ function formatHours(value: number | null) {
   return `${h}h ${m}m`;
 }
 
-// UTC ISO -> "YYYY-MM-DDTHH:mm" in local time for a datetime-local input.
-function toLocalInput(iso: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-const statusMeta: Record<AttendanceStatus, { dot: string; label: string }> = {
-  completed: { dot: "bg-emerald-500", label: "Completed" },
-  on_shift: { dot: "bg-blue-500", label: "On shift" },
-  auto_closed: { dot: "bg-amber-500", label: "Auto-closed" },
+const statusMeta: Record<AttendanceStatus, { tone: BadgeTone }> = {
+  completed: { tone: "success" },
+  on_shift: { tone: "info" },
+  auto_closed: { tone: "warning" },
 };
 
 export default function AttendancePage() {
@@ -62,7 +54,7 @@ export default function AttendancePage() {
 
   function openCorrect(record: AttendanceRecord) {
     setCorrecting(record);
-    setCheckoutInput(toLocalInput(record.effective_check_out_at ?? record.check_in_at));
+    setCheckoutInput(toLocalDateTimeInput(record.effective_check_out_at ?? record.check_in_at));
     setCorrectError(null);
   }
 
@@ -71,9 +63,9 @@ export default function AttendancePage() {
     setSaving(true);
     setCorrectError(null);
     try {
-      await attendanceApi.correct(correcting.id, new Date(checkoutInput).toISOString());
+      const updated = await attendanceApi.correct(correcting.id, new Date(checkoutInput).toISOString());
+      setRecords((rs) => rs.map((r) => (r.id === updated.id ? updated : r)));
       setCorrecting(null);
-      load();
     } catch (e) {
       setCorrectError(e instanceof ApiError ? e.message : "Failed to save check-out");
     } finally {
@@ -103,7 +95,7 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {missed.length > 0 && (
+      {!loading && missed.length > 0 && (
         <div className="mt-4 space-y-3 px-4 sm:px-6 lg:px-8">
           {missed.map((w) => (
             <div
@@ -143,15 +135,15 @@ export default function AttendancePage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {records.map((a) => {
-                    // Fall back if an older backend hasn't shipped `status` yet,
-                    // so the page degrades instead of crashing on statusMeta[undefined].
-                    const status: AttendanceStatus = a.status ?? (a.check_out_at ? "completed" : "on_shift");
-                    const meta = statusMeta[status];
+                    const status = a.status;
+                    // Guards against an unrecognized status value (e.g. a backend
+                    // regression or a new status shipped before this map is updated).
+                    const meta = statusMeta[status] ?? statusMeta.on_shift;
                     return (
                       <tr key={a.id} className={cn(status === "auto_closed" && "bg-amber-50/50")}>
                         <td className="px-5 py-3">
                           <span className="flex items-center gap-2 font-semibold text-slate-900">
-                            <span className={cn("size-2 rounded-full", meta.dot)} />
+                            <span className={cn("size-2 rounded-full", toneDotColor[meta.tone])} />
                             {a.telecaller_name}
                           </span>
                         </td>
@@ -176,7 +168,7 @@ export default function AttendancePage() {
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          {status !== "completed" && (
+                          {status === "auto_closed" && (
                             <button className="text-xs font-semibold text-primary-600 hover:underline" onClick={() => openCorrect(a)}>
                               Set check-out
                             </button>
@@ -199,11 +191,11 @@ export default function AttendancePage() {
 
       <Modal
         open={correcting !== null}
-        onClose={() => setCorrecting(null)}
+        onClose={() => !saving && setCorrecting(null)}
         title="Set check-out time"
         footer={
           <>
-            <Button variant="outline" size="sm" onClick={() => setCorrecting(null)}>
+            <Button variant="outline" size="sm" onClick={() => setCorrecting(null)} disabled={saving}>
               Cancel
             </Button>
             <Button size="sm" onClick={submitCorrect} disabled={saving || !checkoutInput}>
@@ -218,8 +210,13 @@ export default function AttendancePage() {
             {formatTime(correcting?.check_in_at ?? null)}).
           </p>
           {correctError && <p className="text-xs font-medium text-red-600">{correctError}</p>}
+          <label htmlFor="checkout-time" className="mb-1 block text-xs font-semibold text-slate-500">
+            Check-out time
+          </label>
           <input
+            id="checkout-time"
             type="datetime-local"
+            step="1"
             value={checkoutInput}
             onChange={(e) => setCheckoutInput(e.target.value)}
             className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
